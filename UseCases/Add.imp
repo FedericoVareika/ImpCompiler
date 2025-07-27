@@ -1,0 +1,8 @@
+def add(a, b) returns x {
+    x := b;
+    while a is [
+        S -> [a'] {
+            a, x := a', S [x];
+        }, 
+    ];
+} 

@@ -10,14 +10,26 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "ChiCompiler",
+        .name = "ImpCompiler",
         .root_module = exe_mod,
+    });
+
+    const repl_exe_mod = b.createModule(.{
+        .root_source_file = b.path("src/repl.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const repl_exe = b.addExecutable(.{
+        .name = "ImpRepl",
+        .root_module = repl_exe_mod,
     });
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
     b.installArtifact(exe);
+    b.installArtifact(repl_exe);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
