@@ -20,8 +20,8 @@ pub const TokenType = enum {
     RightParen, 
     LeftBracket, 
     RightBracket, 
-    LeftBrace, 
-    RightBrace, 
+    LeftCurlyBracket, 
+    RightCurlyBracket, 
 
     // Keywords
     Local,
@@ -56,8 +56,9 @@ pub const TokenType = enum {
 };
 
 pub const Token = struct {
-    const literalLength = 100;
+    pub const literalLength = 100;
+    pub const LiteralType = [literalLength:0]u8;
 
-    type: TokenType, 
-    literal: [literalLength:0]u8 = std.mem.zeroes([literalLength:0]u8),
+    type: TokenType = TokenType.Illegal, 
+    literal: LiteralType = std.mem.zeroes(LiteralType),
 };

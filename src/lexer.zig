@@ -7,6 +7,12 @@ pub const Lexer = struct {
     readPosition: u32 = 0,
     value: u8 = 0,
 
+    pub fn init(input: []const u8) Lexer {
+        var l: Lexer = .{ .input = input };
+        l.readChar();
+        return l;
+    }
+
     pub fn readChar(self: *Lexer) void {
         if (self.readPosition >= self.input.len) {
             self.value = 0;
@@ -31,9 +37,11 @@ pub const Lexer = struct {
         while (std.ascii.isWhitespace(self.value)) self.readChar();
 
         var t: token.Token = .{
-            .type = token.TokenType.Illegal,
+            .type = token.TokenType.EOF,
         };
         
+        if (self.value == 0) return t;
+
         defer self.readChar();
 
         switch (self.value) {
@@ -62,11 +70,11 @@ pub const Lexer = struct {
                 t.literal[0] = self.value;
             },
             '{' => {
-                t.type = token.TokenType.LeftBrace;
+                t.type = token.TokenType.LeftCurlyBracket;
                 t.literal[0] = self.value;
             },
             '}' => {
-                t.type = token.TokenType.RightBrace;
+                t.type = token.TokenType.RightCurlyBracket;
                 t.literal[0] = self.value;
             },
             else => {
@@ -156,6 +164,12 @@ test "add test" {
     var i: u32 = 0;
     while (l.value != 0) : (i += 1) {
         const t = l.nextToken();
-        print("type: {s}, literal: {s}\n", .{ std.enums.tagName(token.TokenType, t.type) orelse break, t.literal });
+        print(
+            "type: {s}, literal: {s}\n",
+            .{
+                std.enums.tagName(token.TokenType, t.type) orelse break,
+                t.literal,
+            },
+        );
     }
 }
