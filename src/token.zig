@@ -61,4 +61,5 @@ pub const Token = struct {
 
     type: TokenType = TokenType.Illegal, 
     literal: LiteralType = std.mem.zeroes(LiteralType),
+    position: u32 = 0,
 };

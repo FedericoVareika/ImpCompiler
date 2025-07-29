@@ -1,46 +1,20 @@
 const std = @import("std");
 const token = @import("token.zig");
 
-pub const Statement = union(token.TokenType) {
+pub const Statement = union(enum) {
     Illegal: void, 
-    EOF: void, 
-
-    // Identifiers + Constructors
-    Identifier: void, 
-    // Constructor,  // Cannot determine if its an id or constructor in lexer
-    
-    // Operators
     Assign: Assignment, 
-    Arrow: void, 
-
-    // Delimiters
-    Semicolon: void, 
-    Comma: void, 
-
-    LeftParen: void, 
-    RightParen: void, 
-    LeftBracket: void, 
-    RightBracket: void, 
-    LeftCurlyBracket: void, 
-    RightCurlyBracket: void, 
-
-    // Keywords
-    Local: void,
-
-    Case: void, 
-    CaseOf: void, 
-
-    While: void, 
-    WhileIs: void, 
-
-    DefineFunction: void, 
-    FunctionReturns: void, 
-    CallOn: void, 
+    Local: Local, 
 };
 
 pub const Assignment = struct {
     vars: []Variable,
     expressions: []Expression,
+};
+
+pub const Local = struct {
+    vars: []Variable,
+    scope: Program,    
 };
 
 pub const ExpressionType = enum {
@@ -59,15 +33,65 @@ pub const Constructor = struct {
 };
 
 pub const Variable = struct {
-    name: token.Token.LiteralType,
+    const LiteralType = token.Token.LiteralType;
+    name: LiteralType = std.mem.zeroes(LiteralType),
 };
 
 pub const Program = struct {
-    const StatementsType = std.ArrayList(Statement); 
-    const programAllocator = std.heap.page_allocator;
-    statements: StatementsType,
-
-    pub fn init() Program {
-        return .{ .statements = StatementsType.init(programAllocator) }; 
-    }
+    statements: []Statement,
 };
+
+fn printConstructor(constructor: Constructor) void {
+    const print = std.debug.print;
+
+    print("Constructor {s} [", .{&constructor.literal});
+
+    for (constructor.parameters, 0..) |param, i| {
+        printExpression(param);
+        if (constructor.parameters.len != i + 1)
+            print(", ", .{});
+    }
+    print("]", .{});
+}
+
+fn printExpression(expression: Expression) void {
+    const print = std.debug.print;
+    switch (expression) {
+        .Variable => |expressionVar| {
+            print("Var {s}", .{&expressionVar.name});
+        },
+        .Constructor => |expressionConstructor| {
+            printConstructor(expressionConstructor);
+        },
+    }
+}
+
+fn printAssignment(assignment: Assignment) void {
+    const print = std.debug.print;
+
+    print("Assignment:\n", .{});
+
+    for (assignment.vars, assignment.expressions) |variable, expression| {
+        print("{s} := ", .{
+            &variable.name,
+        });
+        printExpression(expression);
+        print("\n", .{});
+    }
+}
+
+fn printStatement(stmt: Statement) void {
+    switch (stmt) {
+        .Assign => |assignment| {
+            printAssignment(assignment);
+        },
+        else => {},
+    }
+}
+
+pub fn printProgram(prog: Program) void {
+    for (prog.statements) |stmt| {
+        printStatement(stmt);
+    }
+}
+

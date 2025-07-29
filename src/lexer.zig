@@ -38,6 +38,7 @@ pub const Lexer = struct {
 
         var t: token.Token = .{
             .type = token.TokenType.EOF,
+            .position = self.position,
         };
         
         if (self.value == 0) return t;
@@ -142,6 +143,24 @@ pub const Lexer = struct {
             else => false,
         }; 
     }
+
+    pub fn getLineCoords(
+        self: Lexer,
+        position: u32,
+    ) struct { u32, u32 } {
+        std.debug.assert(position >= 0 and position < self.input.len);
+        var start = position;        
+        while (start > 0 and self.input[start - 1] != '\n') {
+            start -= 1;
+        }
+
+        var end = position;        
+        while (end < self.input.len and self.input[end] != '\n') {
+            end += 1;
+        }
+
+        return .{ start, end };
+    } 
 };
 
 const print = std.debug.print;
@@ -163,13 +182,13 @@ test "add test" {
 
     var i: u32 = 0;
     while (l.value != 0) : (i += 1) {
-        const t = l.nextToken();
-        print(
-            "type: {s}, literal: {s}\n",
-            .{
-                std.enums.tagName(token.TokenType, t.type) orelse break,
-                t.literal,
-            },
-        );
+        _ = l.nextToken();
+        // print(
+        //     "type: {s}, literal: {s}\n",
+        //     .{
+        //         std.enums.tagName(token.TokenType, t.type) orelse break,
+        //         t.literal,
+        //     },
+        // );
     }
 }
