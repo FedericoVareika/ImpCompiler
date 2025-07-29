@@ -34,7 +34,7 @@ pub const ParseError = union(enum) {
                     .expectedToken = std.enums.tagName(TokenType, err.expectedToken) orelse "NONE",
                     .actualToken = std.enums.tagName(TokenType, err.actualToken) orelse "NONE",
                     .line = err.line, 
-                    .position = err.position,
+                    .position = err.position + 1,
                     .carat = "^",
                 });
             }
@@ -48,7 +48,7 @@ pub const Parser = struct {
     curToken: token.Token = .{},
     peekToken: token.Token = .{},
 
-    errors: std.ArrayList([]const u8),
+    errors: std.ArrayList(ParseError),
 
     pub fn nextToken(self: *Parser) void {
         self.curToken = self.peekToken;
@@ -58,7 +58,7 @@ pub const Parser = struct {
     pub fn init(l: *lexer.Lexer) Parser {
         var p: Parser = .{
             .lexer = l,
-            .errors = std.ArrayList([]const u8).init(std.heap.page_allocator),
+            .errors = std.ArrayList(ParseError).init(std.heap.page_allocator),
         };
         p.nextToken();
         p.nextToken();
@@ -70,22 +70,16 @@ pub const Parser = struct {
         actualToken: token.Token,
         expectedTokenType: TokenType,
     ) void {
-        const errorMsg = std.fmt.allocPrint(
-            std.heap.page_allocator,
-            "ERROR: expected {s}, found {s}",
-            .{ 
-                std.enums.tagName(token.TokenType, expectedTokenType) orelse "NONE",
-                std.enums.tagName(token.TokenType, actualToken.type) orelse "NONE",
-            },
-        ) catch {
-            std.debug.panic("Allocation error\n", .{});
-        };
-
         const start, const end = self.lexer.getLineCoords(actualToken.position);
-        self.errors.appendSlice(&[_][]const u8{
-            errorMsg,
-            self.lexer.input[start..end],
-        }) catch {
+        const newError: ParseError = .{
+            .UnexpectedToken = .{
+                .position = actualToken.position - start,
+                .line = self.lexer.input[start..end], 
+                .expectedToken = expectedTokenType, 
+                .actualToken = actualToken.type,
+            }
+        }; 
+        self.errors.append(newError) catch {
             std.debug.panic("Could not append error\n", .{});
         };
     }
@@ -119,7 +113,6 @@ pub const Parser = struct {
         }
     }
 
-    // Assumes that there is at least one element in list
     fn parseList(
         self: *Parser,
         T: type,
@@ -129,16 +122,20 @@ pub const Parser = struct {
     ) ?[]T {
         var list: std.ArrayList(T) = std.ArrayList(T)
             .init(std.heap.page_allocator);
+        defer list.deinit();
 
         while (self.curToken.type != stopToken) {
-            const val = parseValue(self) orelse return null;
-            list.append(val) catch return null;
+            if (parseValue(self)) |val| {
+                list.append(val) catch return null;
+            }
             if (self.curToken.type == delimiterToken) {
                 self.nextToken();
             } else {
                 break;
             }
         }
+
+        if (self.errors.items.len > 0) return null;
 
         return list.toOwnedSlice() catch null;
     }
@@ -314,7 +311,7 @@ test "assign difficult constructor to variable" {
 
 test "assignation errors" {
     const input = 
-        \\ x := ;
+        \\ x := O [];
         \\ x := b;
         \\ x, := b;
     ;
