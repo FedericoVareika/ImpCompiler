@@ -53,6 +53,40 @@ pub const TokenType = enum {
     pub fn parse(str: []const u8) ?TokenType {
         return multiCharacterLookup.get(str);
     }
+
+    pub fn format(
+        self: TokenType,
+        comptime fmt: []const u8, 
+        options: std.fmt.FormatOptions,
+        writer: anytype,     
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        try writer.print("{s}", .{ switch (self) {
+            .Illegal => "ILLEGAL",
+            .EOF => "EOF",
+            .Identifier => "identifier", 
+            .Assign => ":=", 
+            .Arrow => "->", 
+            .Semicolon => ";", 
+            .Comma => ",", 
+            .LeftParen => "(", 
+            .RightParen => ")", 
+            .LeftBracket => "[", 
+            .RightBracket => "]", 
+            .LeftCurlyBracket => "{", 
+            .RightCurlyBracket => "}", 
+            .Local => "local",
+            .Case => "case", 
+            .CaseOf => "of", 
+            .While => "while", 
+            .WhileIs => "is", 
+            .DefineFunction => "def", 
+            .FunctionReturns => "returns", 
+            .CallOn => "on", 
+        }});
+    }
 };
 
 pub const Token = struct {

@@ -3,47 +3,11 @@ const token = @import("token.zig");
 const lexer = @import("lexer.zig");
 const ast = @import("ast.zig");
 const TokenType = token.TokenType;
+const ParseError = @import("parseError.zig").ParseError;
 
 const printf = @cImport("stdio.h").printf;
 
-pub const ParseError = union(enum) {
-    UnexpectedToken: struct {
-        position: u32,
-        line: []const u8,
-        expectedToken: TokenType,
-        actualToken: TokenType, 
-    },
-
-    pub fn format(
-        self: ParseError,
-        comptime fmt: []const u8, 
-        options: std.fmt.FormatOptions,
-        writer: anytype,     
-    ) !void {
-        _ = fmt;
-        _ = options;
-
-        switch (self) {
-            .UnexpectedToken => |err| {
-                const errMsg = 
-                    \\ error: expected '{[expectedToken]s}', found '{[actualToken]s}'
-                    \\    {[line]s}
-                    \\    {[carat]s:[position]}
-                ;
-                try writer.print(errMsg, .{
-                    .expectedToken = std.enums.tagName(TokenType, err.expectedToken) orelse "NONE",
-                    .actualToken = std.enums.tagName(TokenType, err.actualToken) orelse "NONE",
-                    .line = err.line, 
-                    .position = err.position + 1,
-                    .carat = "^",
-                });
-            }
-        }
-    }
-};
-
 pub const Parser = struct {
-
     lexer: *lexer.Lexer,
     curToken: token.Token = .{},
     peekToken: token.Token = .{},
@@ -187,29 +151,93 @@ pub const Parser = struct {
         return .{ .literal = literal, .parameters = parameters };
     }
 
+    fn parseBranch(self: *Parser) ?ast.Branch {
+        if (!self.expectCurToken(TokenType.Identifier) 
+            or !self.expectPeekToken(TokenType.LeftBracket))
+            return null;
+
+        const constructorName = self.curToken.literal;
+
+        // Skip [
+        self.nextToken();
+        self.nextToken();
+
+        const captureParameters = self.parseList(
+            ast.Variable, 
+            parseVariable, 
+            TokenType.Comma,
+            TokenType.RightBracket) orelse return null;
+
+        if (!self.expectCurToken(TokenType.RightBracket)
+            or !self.expectPeekToken(TokenType.Arrow))
+            return null;
+
+        // Skip ]
+        self.nextToken();
+        // Skip ->
+        self.nextToken();
+
+        const branchProgram = self.parseProgram() orelse return null;
+
+        return .{
+            .constructorName = constructorName,
+            .captureParameters = captureParameters,
+            .branchProgram = branchProgram,
+        };
+    }
+
     pub fn parseProgram(self: *Parser) ?ast.Program {
+        var openScope = false;
+        if (self.curToken.type == TokenType.LeftCurlyBracket) {
+            openScope = true;
+            self.nextToken();
+        }
+
         const stmts = self.parseList(
             ast.Statement, 
             parseStatement,
             TokenType.Semicolon,
             TokenType.EOF) orelse return null;
 
+        if (openScope) {
+            if (!self.expectCurToken(TokenType.RightCurlyBracket))
+                return null;
+            self.nextToken();
+        }
+
         return .{ .statements = stmts };
     }
 
     fn parseStatement(self: *Parser) ?ast.Statement {
         switch (self.curToken.type) {
-            // A statement beginning with an identifier, can only be an
-            // assignment
             .Identifier => {
-                const assign = self.parseAssignment() orelse return null;
-                return .{ .Assign = assign };
+                if (self.peekToken.type == TokenType.LeftParen) {
+                    const functionCall = self.parseFunctionCall() 
+                        orelse return null;
+                    return .{ .CallFunction = functionCall };
+                } else {
+                    const assign = self.parseAssignment() orelse return null;
+                    return .{ .Assign = assign };
+                }
             },
             .Local => {
                 const local = self.parseLocal() orelse return null;
                 return .{ .Local = local };
             },
+            .Case => {
+                const case = self.parseCase() orelse return null;
+                return .{ .Case = case };
+            },
+            .While => {
+                const whileStmt = self.parseWhile() orelse return null;
+                return .{ .While = whileStmt };
+            },
+            .DefineFunction => {
+                const defineFunction = self.parseDefineFunction() orelse return null;
+                return .{ .DefineFunction = defineFunction };
+            },
             else => {
+                std.debug.print("Unexpected token {s}\n", .{ self.curToken.type });
                 return null;
             },
         }
@@ -258,15 +286,142 @@ pub const Parser = struct {
             TokenType.Comma, 
             TokenType.RightBracket) orelse return null;
 
+        if (!self.expectCurToken(TokenType.RightBracket)) 
+            return null;
+
+        self.nextToken();
+
         if (!self.expectCurToken(TokenType.LeftCurlyBracket)) 
             return null;
 
         const localProg = self.parseProgram() orelse return null; 
 
-        if (!self.expectCurToken(TokenType.RightCurlyBracket)) 
+        return .{ .vars = localVariables, .scope = localProg };
+    }
+
+    fn parseCase(self: *Parser) ?ast.Case {
+        if (!self.expectCurToken(TokenType.Case)
+            or !self.expectPeekToken(TokenType.Identifier)) 
             return null;
 
-        return .{ .vars = localVariables, .scope = localProg };
+        self.nextToken();
+
+        const caseVariable = self.parseVariable() orelse return null;
+
+        if (!self.expectCurToken(TokenType.CaseOf)
+            or !self.expectPeekToken(TokenType.LeftBracket))
+            return null;
+
+        self.nextToken();
+        self.nextToken();
+
+        const branches = self.parseList(
+            ast.Branch,
+            parseBranch,
+            TokenType.Comma, 
+            TokenType.RightBracket) orelse return null;
+
+        return .{ .variable = caseVariable, .branches = branches };
+    }
+
+    fn parseWhile(self: *Parser) ?ast.While {
+        if (!self.expectCurToken(TokenType.While)
+            or !self.expectPeekToken(TokenType.Identifier)) 
+            return null;
+
+        self.nextToken();
+
+        const whileVariable = self.parseVariable() orelse return null;
+
+        if (!self.expectCurToken(TokenType.WhileIs)
+            or !self.expectPeekToken(TokenType.LeftBracket))
+            return null;
+
+        self.nextToken();
+        self.nextToken();
+
+        const branches = self.parseList(
+            ast.Branch,
+            parseBranch,
+            TokenType.Comma, 
+            TokenType.RightBracket) orelse return null;
+
+        return .{ .variable = whileVariable, .branches = branches };
+    }
+
+    fn parseDefineFunction(self: *Parser) ?ast.DefineFunction {
+        if (!self.expectCurToken(TokenType.DefineFunction)
+            or !self.expectPeekToken(TokenType.Identifier)) 
+            return null;
+
+        self.nextToken();
+
+        if (!self.expectPeekToken(TokenType.LeftParen))
+            return null;
+
+        const functionName = self.curToken.literal;
+
+        self.nextToken();
+
+        const parameters = self.parseList(
+            ast.Variable,
+            parseVariable,
+            TokenType.Comma, 
+            TokenType.RightParen) orelse return null;
+
+        if (!self.expectCurToken(TokenType.RightParen) 
+            or !self.expectPeekToken(TokenType.FunctionReturns))
+            return null;
+
+        // Skip ') returns'
+        self.nextToken();
+        self.nextToken();
+
+        const returns = self.parseVariable() orelse return null;
+
+        if (!self.expectCurToken(TokenType.LeftCurlyBracket))
+            return null;
+
+        const program = self.parseProgram() orelse return null;
+
+        return .{ 
+            .name = functionName,
+            .parameters = parameters,
+            .returns = returns,
+            .program = program,
+        };
+    }
+
+    fn parseFunctionCall(self: *Parser) ?ast.CallFunction {
+        if (!self.expectCurToken(TokenType.Identifier)
+            or !self.expectPeekToken(TokenType.LeftParen)) 
+            return null;
+
+        const functionName = self.curToken.literal;
+
+        self.nextToken();
+
+        const parameters = self.parseList(
+            ast.Expression,
+            parseExpression,
+            TokenType.Comma, 
+            TokenType.RightParen) orelse return null;
+
+        if (!self.expectCurToken(TokenType.RightParen) 
+            or !self.expectPeekToken(TokenType.CallOn))
+            return null;
+
+        // Skip ') on'
+        self.nextToken();
+        self.nextToken();
+
+        const on = self.parseVariable() orelse return null;
+
+        return .{ 
+            .name = functionName,
+            .parameters = parameters,
+            .on = on,
+        };
     }
 };
 
@@ -277,7 +432,7 @@ test "assign three variables to other three variables" {
     var parser = Parser.init(&l);
 
     if (parser.parseProgram()) |program| {
-        ast.printProgram(program);
+        std.debug.print("{s}\n", .{ program });
     } else {
         parser.printErrors();
     }
@@ -293,7 +448,7 @@ test "assign constructor to variable" {
         parser.printErrors();
         return;
     };
-    ast.printProgram(program);
+    std.debug.print("{s}\n", .{ program });
 }
 
 test "assign difficult constructor to variable" {
@@ -306,14 +461,12 @@ test "assign difficult constructor to variable" {
         parser.printErrors();
         return;
     };
-    ast.printProgram(program);
+    std.debug.print("{s}\n", .{ program });
 }
 
-test "assignation errors" {
+test "assignation error, no right hand side" {
     const input = 
-        \\ x := O [];
-        \\ x := b;
-        \\ x, := b;
+        \\ x :=;
     ;
 
     var l = lexer.Lexer.init(input);
@@ -324,5 +477,76 @@ test "assignation errors" {
         parser.printErrors();
         return;
     };
-    ast.printProgram(program);
+    std.debug.print("{s}\n", .{ program });
+}
+
+test "assignation error, bad assign symbol" {
+    const input = 
+        \\ x = b;
+    ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{s}\n", .{ program });
+}
+
+test "assignation error, no assign symbol" {
+    const input = 
+        \\ x b;
+    ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{s}\n", .{ program });
+}
+
+test "local test" {
+    const input = 
+        \\ local [x] {
+        \\   x := O [];
+        \\ };
+    ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{s}\n", .{ program });
+}
+
+test "case test" {
+    const input = 
+        \\ case x of [
+        \\   O [x] -> {
+        \\     y := x;
+        \\   },
+        \\   a dslkjf 
+        \\ };
+    ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{s}\n", .{ program });
 }
