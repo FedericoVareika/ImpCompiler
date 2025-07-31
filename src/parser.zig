@@ -236,6 +236,9 @@ pub const Parser = struct {
                 const defineFunction = self.parseDefineFunction() orelse return null;
                 return .{ .DefineFunction = defineFunction };
             },
+            .RightCurlyBracket => {
+                return null;
+            },
             else => {
                 std.debug.print("Unexpected token {s}\n", .{ self.curToken.type });
                 return null;
@@ -321,6 +324,9 @@ pub const Parser = struct {
             TokenType.Comma, 
             TokenType.RightBracket) orelse return null;
 
+        if (!self.expectCurToken(TokenType.RightBracket))
+            return null;
+
         return .{ .variable = caseVariable, .branches = branches };
     }
 
@@ -363,6 +369,9 @@ pub const Parser = struct {
 
         self.nextToken();
 
+        // Skip (
+        self.nextToken();
+
         const parameters = self.parseList(
             ast.Variable,
             parseVariable,
@@ -400,6 +409,8 @@ pub const Parser = struct {
         const functionName = self.curToken.literal;
 
         self.nextToken();
+        // Skip '('
+        self.nextToken();
 
         const parameters = self.parseList(
             ast.Expression,
@@ -432,7 +443,8 @@ test "assign three variables to other three variables" {
     var parser = Parser.init(&l);
 
     if (parser.parseProgram()) |program| {
-        std.debug.print("{s}\n", .{ program });
+        std.debug.print("{any}\n", .{ program });
+        // _ = program;
     } else {
         parser.printErrors();
     }
@@ -448,7 +460,8 @@ test "assign constructor to variable" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
 }
 
 test "assign difficult constructor to variable" {
@@ -461,7 +474,8 @@ test "assign difficult constructor to variable" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
 }
 
 test "assignation error, no right hand side" {
@@ -477,7 +491,8 @@ test "assignation error, no right hand side" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
 }
 
 test "assignation error, bad assign symbol" {
@@ -493,7 +508,8 @@ test "assignation error, bad assign symbol" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
 }
 
 test "assignation error, no assign symbol" {
@@ -509,7 +525,8 @@ test "assignation error, no assign symbol" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
 }
 
 test "local test" {
@@ -527,17 +544,20 @@ test "local test" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
 }
 
 test "case test" {
     const input = 
         \\ case x of [
-        \\   O [x] -> {
+        \\   O [] -> {
         \\     y := x;
         \\   },
-        \\   a dslkjf 
-        \\ };
+        \\   S [x'] -> {
+        \\     y := x'; 
+        \\   }
+        \\ ];
     ;
 
     var l = lexer.Lexer.init(input);
@@ -548,5 +568,64 @@ test "case test" {
         parser.printErrors();
         return;
     };
-    std.debug.print("{s}\n", .{ program });
+    // std.debug.print("{s:>5}\n", .{ program });
+    std.debug.print("{any}\n", .{ program });
+    // _ = program;
+}
+
+test "while test" {
+    const input = 
+        \\ while x is [
+        \\   O [] -> {
+        \\     y := x;
+        \\   },
+        \\   S [x'] -> {
+        \\     y := x'; 
+        \\   }
+        \\ ];
+    ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{any}\n", .{ program });
+}
+
+test "def test" {
+    const input = 
+        \\ def funcName(x, y, z) returns ret {
+        \\   ret := x;
+        \\ }
+    ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{any}\n", .{ program });
+}
+
+test "call function test" {
+    const input = 
+        \\ funcName(x, y, z) on a;
+        ;
+
+    var l = lexer.Lexer.init(input);
+    var parser = Parser.init(&l);
+
+    const program = parser.parseProgram() orelse {
+        std.debug.print("\nCould not parse program: \n", .{});
+        parser.printErrors();
+        return;
+    };
+    std.debug.print("{any}\n", .{ program });
 }

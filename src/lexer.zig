@@ -119,7 +119,8 @@ pub const Lexer = struct {
 
     fn isWordMiddle(char: u8) bool {
         return (isMulticharacterSymbolBody(char) 
-            or std.ascii.isAlphanumeric(char))
+            or std.ascii.isAlphanumeric(char)
+            or char == '\'')
             and !isImportantSymbol(char) and char != 0;
     }
 
@@ -182,13 +183,14 @@ test "add test" {
 
     var i: u32 = 0;
     while (l.value != 0) : (i += 1) {
-        _ = l.nextToken();
+        const t = l.nextToken();
         // print(
         //     "type: {s}, literal: {s}\n",
         //     .{
-        //         std.enums.tagName(token.TokenType, t.type) orelse break,
+        //         t.type,
         //         t.literal,
         //     },
         // );
+        _ = t;
     }
 }

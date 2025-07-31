@@ -1,6 +1,17 @@
 const std = @import("std");
 const token = @import("token.zig");
 
+inline fn printIndented(
+    writer: anytype,
+    comptime str: []const u8,
+    indent: ?usize,
+    args: anytype
+) !void {
+    if (indent != null)
+        try writer.print("{[0]:>[1]}", .{ "\t", indent });
+    try writer.print(str, args);    
+}
+
 pub const Statement = union(enum) {
     Illegal: void, 
     Assign: Assignment, 
@@ -9,43 +20,12 @@ pub const Statement = union(enum) {
     While: While,
     DefineFunction: DefineFunction,
     CallFunction: CallFunction,
-
-    pub fn format(
-        self: Statement,
-        comptime fmt: []const u8, 
-        options: std.fmt.FormatOptions,
-        writer: anytype,     
-    ) !void {
-        _ = fmt;
-        _ = options;
-
-        switch (self) {
-            .Illegal => {},
-            .Assign => |assignment| {
-                try writer.print("Assignment (\n", .{ });
-                for (assignment.vars, assignment.expressions) |variable, expression| {
-                    try writer.print("{s} := ", .{
-                        &variable.name,
-                    });
-                    printExpression(expression);
-                    try writer.print("\n", .{});
-                }
-            }, 
-            .Local => |local| {
-                try writer.print("Local [", .{ });
-                for (local.vars) |variable| {
-                    try writer.print("{s},", .{&variable.name});
-                }
-                try writer.print("] (\n{s}\n)", .{ local.scope });
-            }, 
-            else => {}
-        }
-    }
 };
 
 pub const Assignment = struct {
     vars: []Variable,
     expressions: []Expression,
+
 };
 
 pub const Local = struct {
@@ -104,46 +84,5 @@ pub const Variable = struct {
 
 pub const Program = struct {
     statements: []Statement,
-
-    pub fn format(
-        self: Program,
-        comptime fmt: []const u8, 
-        options: std.fmt.FormatOptions,
-        writer: anytype,     
-    ) !void {
-        _ = fmt;
-        _ = options;
-
-        try writer.print("Program (\n", .{});
-        for (self.statements) |stmt| {
-            try writer.print("{s}", .{ stmt });
-        }
-        try writer.print(")\n", .{});
-    }
 };
-
-fn printConstructor(constructor: Constructor) void {
-    const print = std.debug.print;
-
-    print("Constructor {s} [", .{&constructor.literal});
-
-    for (constructor.parameters, 0..) |param, i| {
-        printExpression(param);
-        if (constructor.parameters.len != i + 1)
-            print(", ", .{});
-    }
-    print("]", .{});
-}
-
-fn printExpression(expression: Expression) void {
-    const print = std.debug.print;
-    switch (expression) {
-        .Variable => |expressionVar| {
-            print("Var {s}", .{&expressionVar.name});
-        },
-        .Constructor => |expressionConstructor| {
-            printConstructor(expressionConstructor);
-        },
-    }
-}
 
